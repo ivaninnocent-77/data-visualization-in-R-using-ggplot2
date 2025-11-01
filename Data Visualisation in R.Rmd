@@ -1,7 +1,7 @@
 ---
 title: \textcolor{blue}{DATA VISUALIZATION IN R USING ggplot2}
 author: \textcolor{blue}{Statistical Computing in R}
-date: "***Lecturer:Ivan Innocent Sekibenga***"
+date: "***Lecturer:Ivan Innocent Sekibenga, isekibenga@kyu.ac.ug, +256752651098***"
 output: pdf_document
 ---
 
@@ -884,4 +884,5 @@ ggplot(data = penguins_clean, aes(x = sex, y = flipper_len, fill = sex)) +   # A
 -   **geom_curve**: geom_curve is used to create curved lines that connect data points. Curved lines can be useful for visualizing relationships or trends in data.
 
 -   **geom_polygon** : geom_polygon is used to create polygon plots, which show areas defined by multiple points. Polygon plots are useful for visualizing regions or shapes in data.       
+
 
