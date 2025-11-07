@@ -1,0 +1,425 @@
+---
+title: "229010645_GY7708_CW2"
+output: html_document
+date: "2023-05-06"
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+ 
+# This work utilized data from Wikipedia (https://www.wikipedia.org), which is available under the Creative Commons Attribution-ShareAlike 3.0 Unported License. To see a copy of this license, visit https://creativecommons.org/licenses/by-sa/3.0/ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+ 
+# This work contains data from OpenStreetMap(https://www.openstreetmap.org), which is made available under the Open Database License. To see a copy of this license, visit http://opendatacommons.org/licenses/odbl/1.0/.
+
+ 
+ 
+# Loading the Libraries
+```{r}
+library(tidyverse)
+library(dplyr)
+library(magrittr)
+library(jsonlite)
+library(httr)
+library(WikipediR)
+library(tidytext)
+library(tm)
+library(SnowballC)
+library(textstem)
+library(RColorBrewer)
+library(wordcloud)
+library(wordcloud2)
+library(ggplot2)
+library(leaflet)
+library(maps)
+library(mapdata)
+1
+library(sf)
+library(ggmap)
+library(mapview)
+```
+# Read CSV file
+```{r}
+wikipedia_geotags <- read.csv('wikipedia_20230301_geotags_in_UK.csv')
+```
+
+# Select the data related to only Leicester and avoid repititions
+```{r}
+wiki_leicester <- wikipedia_geotags %>% 
+  filter(LAD21NM == 'Leicester' & gt_primary == 1)
+```
+
+# Get all article titles in Leicester
+```{r}
+wiki_leicester_titles <- wiki_leicester %>% 
+  pull(page_title)
+```
+
+# Get summaries for the articles
+```{r}
+wiki_leicester_summaries <- list()
+
+for (page_title in wiki_leicester_titles) {
+  print(page_title)
+
+# Retrieve the summary
+page_summary <- 
+  httr::GET(
+    # Base API URL
+    url = "https://en.wikipedia.org/w/api.php", 
+    # API query definition
+    query = list(
+      # Use JSON data format
+      format = "json",
+      action = "query",
+      # Only retrieve the intro
+      prop = "extracts",
+      exintro = 1,
+      explaintext = 1,
+      redirects = 1,
+      # Set the title
+      titles = page_title
+    )
+  ) %>%
+  # Get the content
+  httr::content(
+    as = "text", 
+    encoding = "UTF-8"
+  ) %>%
+  # Transform JSON content to R list
+  jsonlite::fromJSON() %>%
+  # Extract the summary from the list
+  magrittr::extract2("query") %>%
+  magrittr::extract2("pages") %>%
+  magrittr::extract2(1) %>%
+  magrittr::extract2("extract")
+print(page_summary)
+wiki_leicester_summaries <- c(wiki_leicester_summaries,page_summary)
+}
+
+```
+
+# Create a dataframe containing the page titles and summaries and rename the column names appropriately
+```{r}
+wiki_title_list <- as.list(wiki_leicester_titles)
+wiki_dataframe <- data.frame(unlist(wiki_title_list), unlist(wiki_leicester_summaries))
+names(wiki_dataframe) = c("page_title", "page_summary")
+```
+
+# Join the new dataframe to the original wikipedia dataframe
+```{r}
+final_dataframe <- left_join(wiki_leicester, wiki_dataframe,
+                             by = c("page_title" = "page_title")) %>% 
+  select(18, 7, 8, 28, 3, 4, 10)
+```
+
+# Tokenization of the page summaries
+```{r}
+leicester_tokens <- final_dataframe %>%
+  unnest_tokens(word, page_summary)
+```
+
+# Stemming and Lemmatizing the tokenized words
+```{r}
+leicester_tokens <- leicester_tokens %>%
+  mutate(stemmed_words = wordStem(word, language = "en"),
+         word = lemmatize_words(word))
+```
+
+# Exploring Frequency of Words (What is the most common word in the summaries)
+```{r}
+leicester_tokens %>% 
+  count(word, sort = TRUE)
+```
+
+# Removal of stop words
+```{r}
+leicester_tidy <- leicester_tokens %>% 
+  anti_join(get_stopwords())
+```
+
+# Visualizing the top 10 words
+```{r}
+leicester_tokens %>% 
+  anti_join(get_stopwords()) %>% 
+  count(word, sort = TRUE) %>% 
+  slice_max(n, n = 10) %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word)) + geom_col()
+```
+
+# A word cloud of the top 100 words
+
+```{r}
+word_counts <- leicester_tidy %>% 
+  count(word, sort = TRUE)
+```
+
+```{r}
+wordcloud(words = word_counts$word[1:100], freq = word_counts$n[1:100],
+          scale = c(5, 0.5), colors = brewer.pal(8, "Dark2"))
+```
+
+# It's obvious Leicester and England would be the most frequent words thus their removal would give a better picture
+```{r}
+# Make a dataframe of words that will be removed
+new_words <- data.frame(word = c("leicester", "england", "also"))
+stop_words <- get_stopwords()
+stop_words <- bind_rows(stop_words, new_words)
+
+# Remove the specified words from the tokens dataframe
+leicester_tokens_filtered <- leicester_tokens %>% 
+    anti_join(stop_words, by = "word")
+
+# Count the new frequency of words
+word_freq_leicester_filtered <- leicester_tokens_filtered %>% 
+  count(word, sort = TRUE)
+
+# Make a New wordcloud of the top 100 words
+set.seed(1234) # Seed is set for reproducibility
+wordcloud(words = word_freq_leicester_filtered$word, freq = word_freq_leicester_filtered$n,
+          max.words = 100, random.order = FALSE, rot.per = 0.35,
+          colors = brewer.pal(8, "Dark2"))
+```
+
+```{r}
+leicester_tokens_filtered %>% 
+  anti_join(get_stopwords()) %>% 
+  count(word, sort = TRUE) %>% 
+  slice_max(n, n = 10) %>% 
+  mutate(word = reorder(word, n)) %>% 
+  ggplot(aes(n, word)) + geom_col()
+```
+
+# Word cloud of all the top 100 words with interactivity for word frequency
+```{r}
+wordcloud2(data = word_freq_leicester_filtered, 
+           size = 0.8, 
+           color = "random-dark", 
+           backgroundColor = "white", 
+           fontFamily = "serif")
+
+ggsave("wordcloud.png", dpi = 400, width = 8, height = 6)
+```
+
+# Display the top 10 words using spatial context
+```{r}
+
+top_words <- leicester_tokens_filtered %>%
+  count(word) %>%
+  top_n(10, n) %>%
+  select(word) %>%
+  pull()
+
+top_words_df <- leicester_tokens_filtered %>%
+  filter(word %in% top_words)
+
+ggplot(top_words_df, aes(x = gt_lon, y = gt_lat, color = word)) +
+  geom_point() +
+  coord_map() +
+  ggtitle("Distribution of Top 10 Words in articles related to Leicester")
+```
+
+# Plot the top 10 words on a Map using the shapefile of Leicester
+```{r}
+# Read in the shapefile of Leicester
+leicester_shape <- st_read("leicester.shp")
+
+# Filter the data to keep only the top words
+top_words <- leicester_tokens_filtered %>%
+  count(word) %>%
+  top_n(10, n) %>%
+  select(word) %>%
+  pull()
+
+top_words_df <- leicester_tokens_filtered %>%
+  filter(word %in% top_words)
+
+# Convert the data to an sf object
+top_words_sf <- st_as_sf(top_words_df, coords = c("gt_lon", "gt_lat"), crs = 4326)
+
+# Plot the shapefile and data points
+ggplot() +
+  geom_sf(data = leicester_shape, fill = "gray80") +
+  geom_sf(data = top_words_sf, aes(color = word)) +
+  ggtitle("Distribution of Top 10 Words in Wikipedia articles related to Leicester")
+```
+
+# Sentiment Analysis
+
+```{r}
+#Load the AFINN word list
+AFINN <- get_sentiments("afinn")
+
+#Left join the filtered tokens for Leicester and the AFINN word list to get sentiment scores for each word
+leicester_sentiment <- leicester_tokens_filtered %>% 
+  left_join(AFINN, by = "word")
+
+#Calculate the sentiment score for each article (page_title) by taking the sum of the sentiment scores for all the words in the article and remove all NAs (if any)
+article_sentiment <- leicester_sentiment %>% 
+  group_by(page_title) %>% 
+  summarise(sentiment_score = sum(value, na.rm = TRUE))
+
+#Left join article_sentiment to a dataframe that has long and lat data for spatial context
+joined_data <- left_join(article_sentiment, final_dataframe, by = "page_title")
+
+# Visualize the result
+ggplot(joined_data, aes(x = gt_lon, y = gt_lat, color = sentiment_score)) +
+  geom_point() +
+  scale_color_gradient2(low = "red", mid = "white", high = "blue", midpoint = 0) +
+  theme(panel.background = element_rect(fill = "grey")) +
+  ggtitle("Sentiment Analysis of Wikipedia articles related to Leicester")
+```
+
+```{r}
+# Load the shapefile
+leicester_sf <- st_read("leicester.shp")
+
+# Convert the data to an sf object
+joined_data_sf <- st_as_sf(joined_data, coords = c("gt_lon", "gt_lat"), crs = 4326)
+
+# Visualize the result
+ggplot() +
+  geom_sf(data = leicester_sf, fill = "grey") +
+  geom_sf(data = joined_data_sf, aes(color = sentiment_score, geometry = geometry)) +
+  scale_color_gradient2(low = "red", mid = "white", high = "blue", midpoint = 0) +
+  theme(panel.background = element_rect(fill = "grey")) +
+  ggtitle("Distribution of Sentiments from Wikipedia articles related to Leicester")
+```
+
+# Finding out the top 10 words with positive sentiments
+```{r}
+# Filter the sentiment scores to keep only positive values
+positive_sentiment <- leicester_sentiment %>%
+  filter(value > 0)
+
+# Count the frequency of each word and arrange in descending order
+positive_words <- positive_sentiment %>%
+  count(word, sort = TRUE)
+
+# Select the top 10 positive words
+top_positive_words <- positive_words[1:10, ]
+
+# Visualize the top 10 positive words using a bar chart with a blue colour
+ggplot(top_positive_words, aes(x = reorder(word, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Top 10 words with positive sentiment in Wikipedia articles related to Leicester",
+       x = "Words",
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Finding out the top 10 words with negative sentiments
+```{r}
+# Filter the sentiment scores to keep only negative values
+negative_sentiment <- leicester_sentiment %>%
+  filter(value < 0)
+
+# Count the frequency of each word and arrange in descending order
+negative_words <- negative_sentiment %>%
+  count(word, sort = TRUE)
+
+# Select the top 10 negative words
+top_negative_words <- negative_words[1:10, ]
+
+# Visualize the top 10 negative words using a bar chart with a red colour
+ggplot(top_negative_words, aes(x = reorder(word, -n), y = n, fill = word)) +
+  geom_bar(stat = "identity", fill = "red") +
+  labs(title = "Top 10 words with negative sentiment in Wikipedia articles related to Leicester",
+       x = "Words",
+       y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Plotting it on a Map
+```{r}
+# Join with geographical data
+joined_data_1000 <- left_join(top_positive_words, positive_sentiment, by = "word")
+
+# Plot on a map
+ggplot(joined_data_1000, aes(x = gt_lon, y = gt_lat)) +
+  geom_point() +
+  geom_text(aes(label = word), size = 4, color = "blue") +
+  labs(title = "Top 10 Positive Words on a Map",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_void()
+
+```
+
+```{r}
+# Join with geographical data
+joined_data_2000 <- left_join(top_negative_words, negative_sentiment, by = "word")
+
+# Plot on a map
+ggplot(joined_data_2000, aes(x = gt_lon, y = gt_lat)) +
+  geom_point() +
+  geom_text(aes(label = word), size = 4, color = "red") +
+  labs(title = "Top 10 Negative Words on a Map",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_void()
+
+```
+```{r}
+# Join positive and negative words with geographical data
+joined_data_x <- rbind(
+  mutate(joined_data_1000, sentiment = "positive"),
+  mutate(joined_data_2000, sentiment = "negative")
+) %>% left_join(AFINN, by = "word")
+
+# Plot on a map
+ggplot(joined_data_x, aes(x = gt_lon, y = gt_lat)) +
+  geom_point(aes(color = sentiment)) +
+  geom_text(aes(label = word), size = 4, color = "black") +
+  scale_color_manual(values = c("positive" = "blue", "negative" = "red")) +
+  labs(title = "Top 10 Positive and Negative Words on a Map",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_void()
+```
+# This stage involves getting a googlemaps API key
+```{r}
+# Load ggmap package
+library(ggmap)
+
+# Set your API key
+register_google(key = "AIzaSyCYxpII10OlP2yW5fd_YDl3Hy7rEyfDqZc")
+
+# Get a map of a Leicester using ggmap
+map <- ggmap(get_map(location = "Leicester", zoom = 12))
+
+# Show the map
+map
+```
+
+```{r}
+# Get a map of Leicester using ggmap
+leicester_map <- get_map(location = "leicester", zoom = 12, maptype = "terrain")
+
+# Visualising it as a map using ggmap
+ggmap(leicester_map) +
+  geom_point(data = joined_data_1000, aes(x = gt_lon, y = gt_lat), color = "blue", size = 3) +
+  geom_point(data = joined_data_2000, aes(x = gt_lon, y = gt_lat), color = "red", size = 3) +
+  geom_text(data = joined_data_1000, aes(x = gt_lon, y = gt_lat, label = word), size = 4, color = "black") +
+  geom_text(data = joined_data_2000, aes(x = gt_lon, y = gt_lat, label = word), size = 4, color = "black") +
+  labs(title = "Spatial Distribution of Top 10 Positive and Negative
+  Words on an OpenStreetMap of Leicester") +
+  theme_void()
+```
+# Interactive Map showing the spatial distribution of Top 10 Positive and Negative Words on an OpenStreetMap of Leicester 
+```{r}
+
+# Convert data frame to sf object
+joined_data_1000_sf <- st_as_sf(joined_data_1000, coords = c("gt_lon", "gt_lat"), crs = 4326)
+
+# Convert data frame to sf object
+joined_data_2000_sf <- st_as_sf(joined_data_2000, coords = c("gt_lon", "gt_lat"), crs = 4326)
+
+# Create a mapview object with two sf objects
+joined_map <- mapview(list(joined_data_1000_sf, joined_data_2000_sf), map.types = "OpenStreetMap", col.regions = c("blue", "red"))
+
+joined_map
+```
