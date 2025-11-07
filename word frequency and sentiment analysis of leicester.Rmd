@@ -1,5 +1,5 @@
 ---
-title: "229010645_GY7708_CW2"
+title: "Ivan Innocent Sekibenga"
 output: html_document
 date: "2023-05-06"
 ---
@@ -422,4 +422,5 @@ joined_data_2000_sf <- st_as_sf(joined_data_2000, coords = c("gt_lon", "gt_lat")
 joined_map <- mapview(list(joined_data_1000_sf, joined_data_2000_sf), map.types = "OpenStreetMap", col.regions = c("blue", "red"))
 
 joined_map
+
 ```
