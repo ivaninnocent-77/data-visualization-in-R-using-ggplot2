@@ -1,5 +1,5 @@
 ---
-title: "229010645_GY7707_CW"
+title: "Ivan Innocent Sekibenga"
 output: pdf_document
 date: "2023-05-16"
 ---
@@ -810,3 +810,4 @@ Hongfang,L., Xi,D. and Qin, G. (2023) 'Environmental risk of oil pipeline accide
 Huanxin,W., Liu,Z., Wang,X. and Wang,J. (2022) 'GIS-based analysis on the spatial patterns of Global Maritime accidents', *Ocean Engineering*, 245, 110569. doi: 10.1016/j.oceaneng.2022.110569 
 
 Prasannakumar,V.,Vijith,H.,Charutha,R. and Geetha,N. (2011) 'Spatio-Temporal Clustering of Road Accidents: GIS Based Analysis and Assessment', *Procedia Social and Behavioral Sciences*, 21, pp.317–325. doi:10.1016/j.sbspro.2011.07.020 
+
